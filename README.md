@@ -13,13 +13,17 @@
 |:--------|:-----------:|:---------:|:------|
 | v1 (baseline) | 83.61% | 0.77033 | Initial model with data leakage issues |
 | ultimate | 86.64% | 0.78468 | Group Survival + Ticket Frequency (leakage!) |
-| **fixed** | **82.27%** | **0.787** | ✅ **Fixed data leakage, CV/LB aligned** |
+| fixed | 82.27% | 0.787 | ✅ Fixed data leakage, CV/LB aligned |
+| **optimized** | **83.61%** | **0.75119** | ⚠️ **CV/LB gap 8.4%, overfitting detected** |
 
 **Gap Analysis**:
 - ultimate: CV 86.64% → LB 0.78468 (gap ~8%) ❌ Data leakage
-- **fixed: CV 82.27% → LB 0.787 (gap ~3.5%)** ✅ Real performance
+- fixed: CV 82.27% → LB 0.787 (gap ~3.5%) ✅ Real performance
+- **optimized: CV 83.61% → LB 0.75119 (gap ~8.4%)** ⚠️ **Overfitting**
 
 **Key Lesson**: Lower CV with proper validation > Higher CV with leakage
+
+**Current Status**: 需要进一步分析 optimized 版本的过拟合问题
 
 ---
 
@@ -38,12 +42,13 @@ pip install pandas numpy scikit-learn
 
 ### 3. Train Model | 训练模型
 ```bash
-# Best model (fixed, no leakage)
-python train_fixed.py
+# Best model (fixed, no leakage, LB 0.787)
+python train.py
 
 # Archive versions (for reference)
-python archive/train_ultimate.py  # Has leakage, CV 86.64%
-python archive/train_v2.py        # Intermediate version
+python archive/train_ultimate.py      # Has leakage, CV 86.64%
+python archive/train_v2.py            # Intermediate version
+python archive/train_optimized_v1.py  # LightGBM, overfitting (LB 0.75119)
 ```
 
 ### 4. Submit | 提交
@@ -63,14 +68,16 @@ titanic-kaggle/
 ├── submission/                 # Submission files (not in git)
 │   ├── submission_fixed.csv       # ✅ Best: 0.787 (no leakage)
 │   ├── submission_ultimate.csv    # 0.78468 (has leakage)
-│   ├── submission_simple.csv      # Simplified version
-│   └── submission_v2_optimized.csv # V2 with fixes
-├── train_fixed.py              # ✅ Best: Fixed leakage (CV 82.27%, LB 0.787)
-├── train.py                    # Original baseline
+│   ├── submission_optimized.csv   # 0.75119 (overfitting)
+│   └── submission_simple.csv      # Simplified version
+├── train.py                    # ✅ Current: Fixed version (CV 82.27%, LB 0.787)
 ├── archive/                    # Archived versions
+│   ├── train_original.py       # Fixed version (no leakage)
 │   ├── train_v1.py             # Original baseline
 │   ├── train_v2.py             # Intermediate version
-│   └── train_ultimate.py       # Has leakage (CV 86.64%, not real)
+│   ├── train_ultimate.py       # Has leakage (CV 86.64%, not real)
+│   ├── train_optimized_v1.py   # LightGBM (overfitting, LB 0.75119)
+│   └── train_advanced_v1.py    # Advanced features
 ├── titanic_report.md           # Detailed research report
 └── README.md                   # This file
 ```
@@ -180,10 +187,16 @@ scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy')
 - 16 features
 - StratifiedKFold CV (5 folds)
 
+**Optimized Version** (待优化):
+- LightGBM with advanced features
+- CV 83.61% but LB 0.75119 (gap 8.4%)
+- 疑似过拟合，需进一步调参
+
 **Why Random Forest over XGBoost/LightGBM**:
 - Better interpretability
 - Less prone to overfitting on small datasets
 - Feature importance readily available
+- **But**: LightGBM may overfit more on small data (n=891)
 
 ---
 

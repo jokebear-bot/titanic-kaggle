@@ -17,7 +17,10 @@ This report documents a complete journey from baseline (0.77033) to **properly v
 |:---|:---|:---|:---|:---|
 | v1 (baseline) | 83.61% | 0.77033 | ~6% | ❌ Data leakage |
 | ultimate | 86.64% | 0.78468 | ~8% | ❌ Severe leakage |
-| **fixed** | **82.27%** | **0.787** | **~3.5%** | ✅ **Best, properly validated** |
+| fixed | 82.27% | 0.787 | ~3.5% | ✅ Properly validated |
+| **optimized** | **83.61%** | **0.75119** | **~8.4%** | ⚠️ **Overfitting detected** |
+
+**Latest Update**: Optimized version (LightGBM) shows 8.4% CV/LB gap, indicating overfitting despite proper validation. Current best remains **fixed** version (LB 0.787).
 
 **Key Breakthrough**: Lower CV with proper validation (82.27%) > Higher CV with leakage (86.64%)
 
@@ -398,7 +401,49 @@ print(f"CV: {scores.mean():.4f} (+/- {scores.std():.4f})")
 
 ---
 
-## 9. Changelog
+## 9. New Challenge: Optimized Version Overfitting
+
+### 9.1 The Problem
+
+**Latest Submission** (2026-04-23):
+- **Model**: LightGBM with advanced feature engineering
+- **CV**: 83.61%
+- **Public LB**: **0.75119**
+- **Gap**: ~8.4% ⚠️
+
+**Unexpected Result**: Despite proper validation (no data leakage), LB dropped significantly from 0.787 to 0.75119.
+
+### 9.2 Hypotheses
+
+| Hypothesis | Evidence | Likelihood |
+|:-----------|:---------|:-----------|
+| **LightGBM overfitting** | Small dataset (n=891), complex model | **High** |
+| **Feature selection bias** | Too many features (16+) for small data | Medium |
+| **Hyperparameter sensitivity** | Default params may not generalize | Medium |
+| **Random variance** | Single submission, need multiple runs | Low |
+
+### 9.3 Comparison: Random Forest vs LightGBM
+
+| Aspect | Random Forest (fixed) | LightGBM (optimized) |
+|:-------|:---------------------|:---------------------|
+| CV Accuracy | 82.27% | 83.61% |
+| Public LB | **0.787** | 0.75119 |
+| CV/LB Gap | 3.5% ✅ | 8.4% ❌ |
+| Model Complexity | Lower | Higher |
+| Generalization | Better | Worse |
+
+**Conclusion**: For small datasets (n<1000), simpler models (Random Forest) generalize better than complex models (LightGBM/XGBoost).
+
+### 9.4 Next Steps
+
+1. **Return to Random Forest** as base model
+2. **Reduce feature count** to 8-10 most important
+3. **Aggressive regularization**: max_depth=3-4, min_samples_leaf=10+
+4. **Try ensemble** of simple models instead of complex single model
+
+---
+
+## 10. Changelog
 
 | Date | Version | CV | LB | Changes |
 |:-----|:--------|:---|:---|:--------|
@@ -406,7 +451,8 @@ print(f"CV: {scores.mean():.4f} (+/- {scores.std():.4f})")
 | 2026-04-23 | v2 | 83.50% | - | Fixed data leakage, added Ticket features |
 | 2026-04-23 | simple | 82.27% | - | Reduced to 6 core features |
 | 2026-04-23 | ultimate | 86.64% | 0.78468 | Added GroupSurvival, **severe leakage** |
-| **2026-04-23** | **fixed** | **82.27%** | **0.787** | **✅ Complete leakage fix, best LB** |
+| 2026-04-23 | fixed | 82.27% | 0.787 | ✅ Complete leakage fix, best LB |
+| **2026-04-23** | **optimized** | **83.61%** | **0.75119** | ⚠️ LightGBM overfitting, LB dropped |
 
 ---
 
