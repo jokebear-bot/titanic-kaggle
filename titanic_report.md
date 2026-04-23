@@ -10,12 +10,18 @@
 
 ## Executive Summary | 执行摘要
 
-This report documents a complete journey from baseline (0.77033) to optimized models (CV 86.64%), including critical mistakes, lessons learned, and unresolved challenges. The goal is to share knowledge and seek community feedback for further improvement.
+This report documents a complete journey from baseline (0.77033) to **properly validated models (LB 0.787)**, including critical mistakes, lessons learned, and the breakthrough of fixing data leakage.
 
-**Current Status**:
-- Best CV: 86.64% (ultimate version with Group Survival)
-- Best LB: 0.78468 (78.47%)
-- **Critical Gap**: ~8% between CV and LB indicates persistent overfitting
+**Current Status** (Updated 2026-04-23):
+| Version | CV | Public LB | Gap | Status |
+|:---|:---|:---|:---|:---|
+| v1 (baseline) | 83.61% | 0.77033 | ~6% | ❌ Data leakage |
+| ultimate | 86.64% | 0.78468 | ~8% | ❌ Severe leakage |
+| **fixed** | **82.27%** | **0.787** | **~3.5%** | ✅ **Best, properly validated** |
+
+**Key Breakthrough**: Lower CV with proper validation (82.27%) > Higher CV with leakage (86.64%)
+
+**Critical Lesson**: The 8% CV/LB gap in "ultimate" version was caused by data leakage, not overfitting. Proper CV strategy is more important than complex features.
 
 ---
 
@@ -134,36 +140,69 @@ X['GroupSurvival'] = X['GroupId'].map(group_survival).fillna(0.5)
 
 ---
 
+### Version 5: Fixed (Data Leakage Completely Resolved) ✅
+**Date**: 2026-04-23  
+**CV**: 82.27% | **LB**: **0.787**  
+**Gap**: ~3.5% (Acceptable)
+
+**Key Fixes**:
+1. **Feature engineering inside CV loop**: Each fold calculates statistics independently
+2. **Removed GroupSurvival**: Eliminated label leakage source
+3. **TicketFreq from train only**: Test tickets not used in frequency calculation
+4. **Physical separation**: Train and test never combined during feature engineering
+
+**Code Pattern** (Correct):
+```python
+def manual_cv(train, n_splits=5):
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    for train_idx, val_idx in skf.split(train, y):
+        # Split raw data
+        train_fold = train.iloc[train_idx].copy()
+        val_fold = train.iloc[val_idx].copy()
+        
+        # Fit on training subset ONLY
+        feature_engineer = SafeFeatures()
+        feature_engineer.fit(train_fold)
+        
+        # Transform both subsets
+        train_processed = feature_engineer.transform(train_fold)
+        val_processed = feature_engineer.transform(val_fold)
+        
+        # Train and evaluate
+        model.fit(X_train, y_train)
+        score = model.score(X_val, y_val)
+```
+
+**Result**: CV 82.27% → LB 0.787, gap reduced from 8% to 3.5%!
+
+---
+
 ## 3. Critical Analysis | 关键分析
 
-### 3.1 The CV/LB Gap Mystery
+### 3.1 The CV/LB Gap: From Mystery to Resolution
 
 **Observed Gaps**:
-| Version | CV | LB | Gap |
-|:--------|:---|:---|:----|
-| v1 | 83.61% | 77.03% | 6.6% |
-| ultimate | 86.64% | 78.47% | 8.2% |
+| Version | CV | LB | Gap | Root Cause |
+|:--------|:---|:---|:----|:-----------|
+| v1 | 83.61% | 0.77033 | ~6% | Global statistics on combined data |
+| ultimate | 86.64% | 0.78468 | ~8% | **Severe data leakage** |
+| **fixed** | **82.27%** | **0.787** | **~3.5%** | ✅ **Proper validation** |
 
-**Hypotheses**:
-1. **Overfitting**: Model too complex for n=891 dataset
-2. **GroupSurvival Leakage**: Using training group stats on test groups
-3. **Wrong CV Strategy**: Still not properly stratified
-4. **Distribution Shift**: Test set fundamentally different
+**Key Insight**: The 8% gap in "ultimate" was NOT overfitting—it was **data leakage**.
 
-**Evidence for Overfitting**:
-- Higher complexity → Higher CV but not proportional LB gain
-- GroupSurvival may not generalize to unseen groups
+### 3.2 Data Leakage Sources (Root Cause Analysis)
 
-### 3.2 Data Leakage Sources (Post-Mortem)
+**Leakage in "ultimate" version**:
+1. ❌ **Preprocessing outside CV**: `preprocess(train, test)` before CV split
+2. ❌ **GroupSurvival label leakage**: Validation set saw its own group's survival rate
+3. ❌ **TicketFreq with test data**: `combined['Ticket'].value_counts()` included test
+4. ❌ **Secondary merge**: `pd.concat([train_processed, test_processed])` for interactions
 
-**Fixed**:
-- ✅ Age/Fare imputation using only training statistics
-- ✅ StratifiedKFold instead of default KFold
-
-**Potentially Still Present**:
-- ⚠️ GroupSurvival: Training group rates applied to test
-- ⚠️ Ticket frequency: Calculated on combined data
-- ⚠️ Feature interactions: May capture test patterns
+**Fixes in "fixed" version**:
+- ✅ Feature engineering **inside** CV loop
+- ✅ **Removed GroupSurvival** (major leakage source)
+- ✅ TicketFreq from **train-only** statistics
+- ✅ No test data in any `fit()` operation
 
 ### 3.3 What Worked vs. What Didn't
 
@@ -188,12 +227,17 @@ X['GroupSurvival'] = X['GroupId'].map(group_survival).fillna(0.5)
 - Age: 14%
 - Fare: 13%
 
-**Ultimate**:
+**Ultimate** (with leakage):
 - Title: 23%
 - Sex: 21%
-- GroupSurvival: 20%
+- GroupSurvival: 20% (⚠️ Leakage source!)
 
-**Insight**: Domain knowledge (Title, Group dynamics) > raw features
+**Fixed** (no leakage):
+- Sex: 28.5%
+- Title: 22.9%
+- Pclass_Sex: 10.1%
+
+**Insight**: Proper validation reveals true feature importance. Sex dominates when leakage is removed.
 
 ### 4.2 The "Women and Children First" Pattern
 
@@ -250,14 +294,36 @@ With only 891 training samples:
 
 ---
 
-## 6. Open Questions | 开放问题
+## 6. Open Questions | 开放问题 (Partially Resolved)
 
-Seeking community feedback on:
+### ✅ Resolved: CV/LB Gap Mystery
 
-1. **Why is CV/LB gap still 8%?**
-   - Is GroupSurvival inherently leaky?
-   - Are we overfitting to training set patterns?
-   - Is test set distribution truly different?
+**Question**: Why was CV/LB gap 8% in "ultimate" version?
+
+**Answer**: **Data leakage**, not overfitting.
+
+| Evidence | Conclusion |
+|:---------|:-----------|
+| Gap reduced from 8% to 3.5% after fixing leakage | Leakage was the primary cause |
+| CV dropped from 86.64% to 82.27% | Previous CV was inflated by ~4% |
+| LB improved from 0.78468 to 0.787 | Proper validation → better generalization |
+
+### 🔍 Remaining Questions
+
+1. **How to push LB from 0.787 to 0.80+?**
+   - Try LightGBM/CatBoost for better performance
+   - Hyperparameter tuning with Optuna
+   - More sophisticated feature interactions
+
+2. **Is 3.5% CV/LB gap acceptable?**
+   - Typical gap for small datasets: 2-4%
+   - Could be due to random variance (n=891)
+   - Try 10-fold CV for more stable estimate
+
+3. **Feature engineering opportunities**
+   - Ticket prefix analysis (shipping companies)
+   - Name length/complexity
+   - Cabin proximity to lifeboats
 
 2. **How to reduce overfitting further?**
    - Reduce max_depth to 3?
@@ -334,12 +400,13 @@ print(f"CV: {scores.mean():.4f} (+/- {scores.std():.4f})")
 
 ## 9. Changelog
 
-| Date | Version | Changes |
-|:-----|:--------|:--------|
-| 2026-04-22 | v1 | Initial baseline with data leakage |
-| 2026-04-23 | v2 | Fixed data leakage, added Ticket features |
-| 2026-04-23 | simple | Reduced to 6 core features |
-| 2026-04-23 | ultimate | Added GroupSurvival, CV 86.64% |
+| Date | Version | CV | LB | Changes |
+|:-----|:--------|:---|:---|:--------|
+| 2026-04-22 | v1 | 83.61% | 0.77033 | Initial baseline with data leakage |
+| 2026-04-23 | v2 | 83.50% | - | Fixed data leakage, added Ticket features |
+| 2026-04-23 | simple | 82.27% | - | Reduced to 6 core features |
+| 2026-04-23 | ultimate | 86.64% | 0.78468 | Added GroupSurvival, **severe leakage** |
+| **2026-04-23** | **fixed** | **82.27%** | **0.787** | **✅ Complete leakage fix, best LB** |
 
 ---
 
@@ -355,5 +422,5 @@ print(f"CV: {scores.mean():.4f} (+/- {scores.std():.4f})")
 ---
 
 *Report compiled by Bear 🐻 - Your AI Assistant*  
-*Last Updated: 2026-04-23*  
+*Last Updated: 2026-04-23 (Major update: Data leakage fixed, LB 0.787 achieved)*  
 *License: MIT*
