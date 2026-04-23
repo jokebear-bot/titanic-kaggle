@@ -1,160 +1,238 @@
-# Titanic - Machine Learning from Disaster
+# Titanic - Machine Learning from Disaster | 泰坦尼克号生存预测
 
-# 泰坦尼克号生存预测
-
-[English](#english) | [中文](#chinese)
+> **GitHub**: https://github.com/jokebear-bot/titanic-kaggle  
+> **Kaggle Competition**: https://www.kaggle.com/competitions/titanic  
+> **Author**: 熊 🐻 | Bear  
+> **Last Updated**: 2026-04-23
 
 ---
 
-<a name="english"></a>
-## English
+## 📊 Current Best Score | 当前最佳得分
 
-### Overview
-This repository contains a complete solution for the Kaggle Titanic competition, predicting passenger survival based on various features.
+| Version | CV Accuracy | Public LB | Notes |
+|:--------|:-----------:|:---------:|:------|
+| v1 (baseline) | 83.61% | **0.77033** | Initial model with data leakage issues |
+| simple | 82.27% | - | Simplified features to reduce overfitting |
+| v2_optimized | 83.50% | - | Fixed data leakage, added Ticket features |
+| **ultimate** | 86.64% | **0.78468** | Group Survival + Ticket Frequency |
 
-**Competition**: [Titanic - Machine Learning from Disaster](https://www.kaggle.com/competitions/titanic)  
-**Evaluation Metric**: Accuracy  
-**Expected Score**: ~83.6%
+**Gap Analysis**: CV 86.64% → LB 0.78468 (78.47%), gap ~8% indicates overfitting or CV strategy issues.
 
-### Project Structure
-```
-.
-├── dataset/              # Dataset directory (not included in git)
-│   ├── download_data.py  # Script to download data from Kaggle
-│   ├── train.csv         # Training data (891 samples)
-│   ├── test.csv          # Test data (418 samples)
-│   └── gender_submission.csv  # Example submission
-├── submission/           # Submission files (not included in git)
-├── train.py              # Main training script
-├── titanic_report.md     # Research report
-└── README.md             # This file
-```
+---
 
-### Quick Start
+## 🚀 Quick Start | 快速开始
 
-#### 1. Download Data
+### 1. Download Data | 下载数据
 ```bash
 cd dataset
 python download_data.py
 ```
 
-Or manually download from [Kaggle](https://www.kaggle.com/competitions/titanic/data) and place in `dataset/`.
-
-#### 2. Install Dependencies
+### 2. Install Dependencies | 安装依赖
 ```bash
 pip install pandas numpy scikit-learn
 ```
 
-#### 3. Train Model
+### 3. Train Model | 训练模型
 ```bash
-python train.py
+# Best model (Group Survival)
+python train_ultimate.py
+
+# Simple baseline
+python train_simple.py
 ```
 
-#### 4. Submit
-Upload `submission/submission_final.csv` to [Kaggle](https://www.kaggle.com/competitions/titanic/submit).
+### 4. Submit | 提交
+Upload `submission/submission_ultimate.csv` to [Kaggle](https://www.kaggle.com/competitions/titanic/submit).
 
-### Model Features
-- **Title Extraction**: Extract social titles from names (Mr, Mrs, Miss, Master, etc.)
-- **Family Size**: SibSp + Parch + 1
-- **Age Binning**: Categorized age groups
-- **Fare Binning**: Categorized fare groups
-- **Cabin Deck**: Extract deck letter from cabin number
-- **Feature Crossing**: Pclass × Sex interaction
+---
+
+## 📁 Project Structure | 项目结构
+
+```
+titanic-kaggle/
+├── dataset/                    # Dataset directory
+│   ├── download_data.py        # Kaggle data downloader
+│   ├── train.csv              # Training data (not in git)
+│   ├── test.csv               # Test data (not in git)
+│   └── gender_submission.csv  # Example submission (not in git)
+├── submission/                 # Submission files (not in git)
+│   ├── submission_ultimate.csv    # Best: 0.78468
+│   ├── submission_simple.csv      # Simplified version
+│   └── submission_v2_optimized.csv # V2 with fixes
+├── train.py                    # Original baseline
+├── train_simple.py             # Minimal features (6 features)
+├── train_v2.py                 # Optimized with data leakage fix
+├── train_ultimate.py           # Best: Group Survival + Ticket Freq
+├── titanic_report.md           # Detailed research report
+└── README.md                   # This file
+```
+
+---
+
+## 🧠 Key Learnings & Lessons | 关键经验教训
+
+### 1. The CV/LB Gap Problem | CV与LB差距问题
+
+**Lesson**: High CV doesn't guarantee high LB.
+
+| Issue | Impact | Solution |
+|:------|:-------|:---------|
+| Data Leakage | CV inflated by 5-10% | Never use global statistics from combined data |
+| Overfitting | Complex models perform worse on LB | Simplify model, reduce features |
+| Wrong CV Strategy | Unreliable CV scores | Use StratifiedKFold, not default KFold |
+
+**Our Experience**:
+- Initial CV 83.61% → LB 0.77033 (gap: ~6%)
+- Ultimate CV 86.64% → LB 0.78468 (gap: ~8%)
+- **Conclusion**: Still overfitting, need further simplification
+
+### 2. Feature Engineering Matters More Than Complex Models
+
+**Most Important Features** (from ultimate version):
+1. **Title** (22.8%) - Extracted from name (Mr/Mrs/Miss/Master/Rare)
+2. **Sex** (20.7%) - Gender is the strongest single predictor
+3. **GroupSurvival** (19.5%) - Group survival rate based on Ticket + Surname
+4. **Pclass_Sex** (7.3%) - Interaction feature
+5. **Fare_log** (5.7%) - Log-transformed fare
+
+**Lesson**: Domain knowledge (Title, Group dynamics) beats raw features.
+
+### 3. Data Leakage Traps | 数据泄露陷阱
+
+**❌ WRONG**: Fill missing values using statistics from combined train+test
+```python
+# DON'T DO THIS
+combined = pd.concat([train, test])
+combined['Age'] = combined['Age'].fillna(combined['Age'].median())  # LEAKAGE!
+```
+
+**✅ CORRECT**: Calculate statistics only from training data
+```python
+# DO THIS
+age_median = train['Age'].median()
+train['Age'] = train['Age'].fillna(age_median)
+test['Age'] = test['Age'].fillna(age_median)  # Use train statistics
+```
+
+### 4. The "Group Survival" Feature | 群体存活特征
+
+**Insight**: Passengers with same Ticket or Surname often share fate.
+
+**Implementation**:
+1. Extract Surname from Name
+2. Define Group by Ticket + Surname
+3. Calculate group survival rate from training data
+4. Map to test data (unknown groups get 0.5)
+
+**Result**: 19.5% feature importance in ultimate model.
+
+### 5. Model Complexity Trade-off | 模型复杂度权衡
+
+| Model | n_estimators | max_depth | CV | Characteristics |
+|:------|:------------:|:---------:|:--:|:----------------|
+| Simple | 100 | 4 | 82.27% | Underfitting, stable |
+| Balanced | 200 | 5-6 | 83-84% | Sweet spot? |
+| Complex | 300 | 8-10 | 86%+ | Overfitting risk |
+
+**Lesson**: For small datasets (n=891), simpler models generalize better.
+
+### 6. Cross-Validation Strategy | 交叉验证策略
+
+**Always use StratifiedKFold** for imbalanced classification:
+```python
+from sklearn.model_selection import StratifiedKFold
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy')
+```
+
+**Why**: Maintains class distribution (38% survival) in each fold.
+
+---
+
+## 🔧 Technical Details | 技术细节
+
+### Feature Engineering Pipeline
+
+1. **Title Extraction**: From `Name` column using regex `([A-Za-z]+)\.`
+2. **Age Imputation**: By Title + Pclass groups
+3. **Fare Imputation**: By Pclass + Embarked groups
+4. **Fare Log Transform**: `np.log1p(Fare)` to handle skewness
+5. **Family Size**: `SibSp + Parch + 1`
+6. **IsAlone**: Binary flag for solo travelers
+7. **CabinDeck**: First letter of Cabin (A-G, T, U for unknown)
+8. **Ticket Frequency**: Count of passengers sharing same ticket
+9. **Group Survival**: Survival rate of Ticket+Surname group
 
 ### Model Architecture
-- Ensemble of Random Forest + Gradient Boosting
-- 5-Fold Cross Validation
-- Soft Voting for final predictions
 
-### Key Insights
-| Feature | Importance |
-|---------|-----------|
-| Title | 22.8% |
-| Sex | 18.1% |
-| Fare | 11.4% |
-| Pclass_Sex | 9.9% |
-| Age | 8.9% |
+**Ultimate Version**:
+- Random Forest (n_estimators=200, max_depth=5)
+- 16 features
+- StratifiedKFold CV (5 folds)
 
-### License
-MIT License
+**Why Random Forest over XGBoost/LightGBM**:
+- Better interpretability
+- Less prone to overfitting on small datasets
+- Feature importance readily available
 
 ---
 
-<a name="chinese"></a>
-## 中文
+## 📈 Future Improvements | 未来改进方向
 
-### 项目概述
-本项目是 Kaggle 泰坦尼克号生存预测竞赛的完整解决方案，根据乘客信息预测生存率。
+Based on community feedback and Kaggle discussions:
 
-**竞赛**: [Titanic - Machine Learning from Disaster](https://www.kaggle.com/competitions/titanic)  
-**评估指标**: 准确率 (Accuracy)  
-**预期得分**: ~83.6%
+### High Priority
+- [ ] **Fix remaining overfitting**: Try max_depth=3-4, reduce features to 8-10
+- [ ] **Hyperparameter tuning**: Use Optuna for automated search
+- [ ] **Ensemble with XGBoost/LightGBM**: Add model diversity
 
-### 项目结构
-```
-.
-├── dataset/              # 数据集目录 (不包含在git中)
-│   ├── download_data.py  # 从Kaggle下载数据的脚本
-│   ├── train.csv         # 训练数据 (891条)
-│   ├── test.csv          # 测试数据 (418条)
-│   └── gender_submission.csv  # 示例提交文件
-├── submission/           # 提交文件 (不包含在git中)
-├── train.py              # 主训练脚本
-├── titanic_report.md     # 调研报告
-└── README.md             # 本文件
-```
+### Medium Priority
+- [ ] **Advanced Group Features**: Woman-Child-Group logic
+- [ ] **Ticket Prefix Analysis**: Extract shipping company codes
+- [ ] **Age-Fare interaction**: Non-linear combinations
 
-### 快速开始
-
-#### 1. 下载数据
-```bash
-cd dataset
-python download_data.py
-```
-
-或从 [Kaggle](https://www.kaggle.com/competitions/titanic/data) 手动下载并放入 `dataset/` 目录。
-
-#### 2. 安装依赖
-```bash
-pip install pandas numpy scikit-learn
-```
-
-#### 3. 训练模型
-```bash
-python train.py
-```
-
-#### 4. 提交
-上传 `submission/submission_final.csv` 到 [Kaggle](https://www.kaggle.com/competitions/titanic/submit)。
-
-### 模型特征
-- **头衔提取**: 从姓名中提取社会头衔 (Mr, Mrs, Miss, Master 等)
-- **家庭规模**: SibSp + Parch + 1
-- **年龄段**: 分类的年龄组
-- **票价段**: 分类的票价组
-- **舱房甲板**: 从舱房号提取甲板字母
-- **特征交叉**: Pclass × Sex 交互项
-
-### 模型架构
-- 随机森林 + 梯度提升 的模型融合
-- 5折交叉验证
-- Soft Voting 生成最终预测
-
-### 关键洞察
-| 特征 | 重要性 |
-|------|--------|
-| 头衔 (Title) | 22.8% |
-| 性别 (Sex) | 18.1% |
-| 票价 (Fare) | 11.4% |
-| 舱位性别交叉 (Pclass_Sex) | 9.9% |
-| 年龄 (Age) | 8.9% |
-
-### 许可证
-MIT License
+### Low Priority
+- [ ] **Neural Networks**: Usually overkill for this dataset
+- [ ] **Deep Feature Synthesis**: AutoML approaches
 
 ---
 
-## Author / 作者
-Bear 🐻 - Your AI Assistant
+## 📝 Citation & References
 
-Last Updated: 2026-04-23
+If you use this code or findings:
+
+```
+Titanic Kaggle Competition Solution
+GitHub: https://github.com/jokebear-bot/titanic-kaggle
+Author: Bear (熊) - AI Assistant
+Date: 2026-04-23
+```
+
+**Key References**:
+- [Kaggle Titanic Competition](https://www.kaggle.com/competitions/titanic)
+- [Titanic Best Working Classifier](https://www.kaggle.com/code/sinakhorami/titanic-best-working-classifier)
+- [Titanic Data Science Solutions](https://www.kaggle.com/code/startupsci/titanic-data-science-solutions)
+
+---
+
+## 🤝 Contributing & Feedback
+
+This project is actively seeking feedback! Key questions:
+
+1. Why is CV/LB gap still ~8% despite fixes?
+2. Are there additional data leakage sources?
+3. What hyperparameters would reduce overfitting?
+
+Please open an issue or PR on GitHub.
+
+---
+
+**License**: MIT  
+**Status**: Active Development  
+**Last Commit**: 2026-04-23
+
+---
+
+*Created with ❤️ by Bear 🐻*
