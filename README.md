@@ -11,12 +11,15 @@
 
 | Version | CV Accuracy | Public LB | Notes |
 |:--------|:-----------:|:---------:|:------|
-| v1 (baseline) | 83.61% | **0.77033** | Initial model with data leakage issues |
-| simple | 82.27% | - | Simplified features to reduce overfitting |
-| v2_optimized | 83.50% | - | Fixed data leakage, added Ticket features |
-| **ultimate** | 86.64% | **0.78468** | Group Survival + Ticket Frequency |
+| v1 (baseline) | 83.61% | 0.77033 | Initial model with data leakage issues |
+| ultimate | 86.64% | 0.78468 | Group Survival + Ticket Frequency (leakage!) |
+| **fixed** | **82.27%** | **0.787** | ✅ **Fixed data leakage, CV/LB aligned** |
 
-**Gap Analysis**: CV 86.64% → LB 0.78468 (78.47%), gap ~8% indicates overfitting or CV strategy issues.
+**Gap Analysis**:
+- ultimate: CV 86.64% → LB 0.78468 (gap ~8%) ❌ Data leakage
+- **fixed: CV 82.27% → LB 0.787 (gap ~3.5%)** ✅ Real performance
+
+**Key Lesson**: Lower CV with proper validation > Higher CV with leakage
 
 ---
 
@@ -35,15 +38,16 @@ pip install pandas numpy scikit-learn
 
 ### 3. Train Model | 训练模型
 ```bash
-# Best model (Group Survival)
-python train_ultimate.py
+# Best model (fixed, no leakage)
+python train_fixed.py
 
-# Simple baseline
-python train_simple.py
+# Archive versions (for reference)
+python archive/train_ultimate.py  # Has leakage, CV 86.64%
+python archive/train_v2.py        # Intermediate version
 ```
 
 ### 4. Submit | 提交
-Upload `submission/submission_ultimate.csv` to [Kaggle](https://www.kaggle.com/competitions/titanic/submit).
+Upload `submission/submission_fixed.csv` to [Kaggle](https://www.kaggle.com/competitions/titanic/submit).
 
 ---
 
@@ -57,13 +61,16 @@ titanic-kaggle/
 │   ├── test.csv               # Test data (not in git)
 │   └── gender_submission.csv  # Example submission (not in git)
 ├── submission/                 # Submission files (not in git)
-│   ├── submission_ultimate.csv    # Best: 0.78468
+│   ├── submission_fixed.csv       # ✅ Best: 0.787 (no leakage)
+│   ├── submission_ultimate.csv    # 0.78468 (has leakage)
 │   ├── submission_simple.csv      # Simplified version
 │   └── submission_v2_optimized.csv # V2 with fixes
+├── train_fixed.py              # ✅ Best: Fixed leakage (CV 82.27%, LB 0.787)
 ├── train.py                    # Original baseline
-├── train_simple.py             # Minimal features (6 features)
-├── train_v2.py                 # Optimized with data leakage fix
-├── train_ultimate.py           # Best: Group Survival + Ticket Freq
+├── archive/                    # Archived versions
+│   ├── train_v1.py             # Original baseline
+│   ├── train_v2.py             # Intermediate version
+│   └── train_ultimate.py       # Has leakage (CV 86.64%, not real)
 ├── titanic_report.md           # Detailed research report
 └── README.md                   # This file
 ```
@@ -83,20 +90,21 @@ titanic-kaggle/
 | Wrong CV Strategy | Unreliable CV scores | Use StratifiedKFold, not default KFold |
 
 **Our Experience**:
-- Initial CV 83.61% → LB 0.77033 (gap: ~6%)
-- Ultimate CV 86.64% → LB 0.78468 (gap: ~8%)
-- **Conclusion**: Still overfitting, need further simplification
+- v1: CV 83.61% → LB 0.77033 (gap: ~6%) ❌ Data leakage
+- ultimate: CV 86.64% → LB 0.78468 (gap: ~8%) ❌ Severe leakage
+- **fixed: CV 82.27% → LB 0.787 (gap: ~3.5%)** ✅ CV/LB aligned
+- **Conclusion**: Proper validation > Complex features
 
 ### 2. Feature Engineering Matters More Than Complex Models
 
-**Most Important Features** (from ultimate version):
-1. **Title** (22.8%) - Extracted from name (Mr/Mrs/Miss/Master/Rare)
-2. **Sex** (20.7%) - Gender is the strongest single predictor
-3. **GroupSurvival** (19.5%) - Group survival rate based on Ticket + Surname
-4. **Pclass_Sex** (7.3%) - Interaction feature
-5. **Fare_log** (5.7%) - Log-transformed fare
+**Most Important Features** (from fixed version):
+1. **Sex** (28.5%) - Gender is the strongest single predictor
+2. **Title** (22.9%) - Extracted from name (Mr/Mrs/Miss/Master/Rare)
+3. **Pclass_Sex** (10.1%) - Interaction feature
+4. **Pclass** (7.4%) - Cabin class
+5. **Fare_log** (6.7%) - Log-transformed fare
 
-**Lesson**: Domain knowledge (Title, Group dynamics) beats raw features.
+**Lesson**: Proper validation > Complex features with leakage
 
 ### 3. Data Leakage Traps | 数据泄露陷阱
 
